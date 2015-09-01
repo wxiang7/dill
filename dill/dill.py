@@ -673,15 +673,18 @@ def _import_module(import_name, safe=False):
             module = '.'.join(items[:-1])
             obj = items[-1]
         else:
-            return __import__(import_name)
+            try:
+                return __import__(import_name)
+            except:
+                return ModuleType(name=import_name)
         return getattr(__import__(module, None, None, [obj]), obj)
     except (ImportError, AttributeError):
         if safe:
             return None
         raise
 
-def _locate_function(obj, session=False):
-    if obj.__module__ in ['__main__', None]: # and session:
+def _locate_function(obj, session=False, main_modname=None):
+    if obj.__module__ in ['__main__', None] + [main_modname]: # and session:
         return False
     found = _import_module(obj.__module__ + '.' + obj.__name__, safe=True)
     return found is obj
@@ -694,7 +697,7 @@ def save_code(pickler, obj):
 
 @register(FunctionType)
 def save_function(pickler, obj):
-    if not _locate_function(obj): #, pickler._session):
+    if not _locate_function(obj, main_modname=pickler._main.__name__): #, pickler._session):
         log.info("F1: %s" % obj)
         if getattr(pickler, '_recurse', False):
             # recurse to get all globals referred to by obj

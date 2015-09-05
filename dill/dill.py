@@ -158,7 +158,7 @@ def copy(obj, *args, **kwds):
     """use pickling to 'copy' an object"""
     return loads(dumps(obj, *args, **kwds))
 
-def dump(obj, file, protocol=None, byref=None, fmode=None, recurse=None):#, strictio=None):
+def dump(obj, file, protocol=None, byref=None, fmode=None, recurse=None, main=_main_module):#, strictio=None):
     """pickle an object to a file"""
     from .settings import settings
     strictio = False #FIXME: strict=True needs cleanup
@@ -167,7 +167,7 @@ def dump(obj, file, protocol=None, byref=None, fmode=None, recurse=None):#, stri
     if fmode is None: fmode = settings['fmode']
     if recurse is None: recurse = settings['recurse']
     pik = Pickler(file, protocol)
-    pik._main = _main_module
+    pik._main = main
     # apply kwd settings
     pik._byref = bool(byref)
     pik._strictio = bool(strictio)
@@ -186,10 +186,10 @@ def dump(obj, file, protocol=None, byref=None, fmode=None, recurse=None):#, stri
     pik.dump(obj)
     return
 
-def dumps(obj, protocol=None, byref=None, fmode=None, recurse=None):#, strictio=None):
+def dumps(obj, protocol=None, byref=None, fmode=None, recurse=None, main=_main_module):#, strictio=None):
     """pickle an object to a string"""
     file = StringIO()
-    dump(obj, file, protocol, byref, fmode, recurse)#, strictio)
+    dump(obj, file, protocol, byref, fmode, recurse, main)#, strictio)
     return file.getvalue()
 
 def load(file):

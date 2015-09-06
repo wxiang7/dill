@@ -158,7 +158,7 @@ def copy(obj, *args, **kwds):
     """use pickling to 'copy' an object"""
     return loads(dumps(obj, *args, **kwds))
 
-def dump(obj, file, protocol=None, byref=None, fmode=None, recurse=None, main=_main_module):#, strictio=None):
+def dump(obj, file, protocol=None, byref=None, fmode=None, recurse=None, main=_main_module, ship_paths=[]):#, strictio=None):
     """pickle an object to a file"""
     from .settings import settings
     strictio = False #FIXME: strict=True needs cleanup
@@ -173,6 +173,7 @@ def dump(obj, file, protocol=None, byref=None, fmode=None, recurse=None, main=_m
     pik._strictio = bool(strictio)
     pik._fmode = fmode
     pik._recurse = bool(recurse)
+    pik._ship_paths = ship_paths
     # hack to catch subclassed numpy array instances
     if NumpyArrayType and ndarraysubclassinstance(obj):
         @register(type(obj))
@@ -186,10 +187,10 @@ def dump(obj, file, protocol=None, byref=None, fmode=None, recurse=None, main=_m
     pik.dump(obj)
     return
 
-def dumps(obj, protocol=None, byref=None, fmode=None, recurse=None, main=_main_module):#, strictio=None):
+def dumps(obj, protocol=None, byref=None, fmode=None, recurse=None, main=_main_module, ship_paths=[]):#, strictio=None):
     """pickle an object to a string"""
     file = StringIO()
-    dump(obj, file, protocol, byref, fmode, recurse, main)#, strictio)
+    dump(obj, file, protocol, byref, fmode, recurse, main, ship_paths)#, strictio)
     return file.getvalue()
 
 def load(file):

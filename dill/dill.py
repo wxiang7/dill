@@ -327,6 +327,8 @@ class Pickler(StockPickler):
     _strictio = False
     _fmode = settings['fmode']
     _recurse = settings['recurse']
+    _ship_paths = []
+    _pickled_modules = set()
 
     def __init__(self, *args, **kwds):
         _byref = kwds.pop('byref', Pickler._byref)
@@ -340,6 +342,25 @@ class Pickler(StockPickler):
        #self._strictio = _strictio
         self._fmode = _fmode
         self._recurse = _recurse
+
+    def add_pickled_module(self, module_path):
+        self._pickled_modules.add(module_path)
+
+    def is_module_pickled(self, module_path):
+        return module_path in self._pickled_modules
+
+    def is_ship_module(self, mod_dict):
+        if '__file__' not in mod_dict:
+            return False
+
+        file_path = mod_dict['__file__']
+        for ship_dir in self._ship_paths:
+            if os.path.commonprefix([ship_dir, file_path]) == ship_dir:
+                return True
+
+        return False
+
+
     pass
 
 class Unpickler(StockUnpickler):
@@ -683,9 +704,19 @@ def _import_module(import_name, safe=False):
             return None
         raise
 
-def _locate_function(obj, session=False, main_modname=None):
-    if obj.__module__ in ['__main__', None] + [main_modname]: # and session:
+def _locate_function(obj, session=False, ship_paths=[]):
+    if obj.__module__ in ['__main__', None]: # and session:
         return False
+    try:
+        module = sys.modules[obj.__module__]
+        file_path = module.__file__
+        file_dir = os.path.dirname(file_path)
+        for dir in ship_paths:
+            if os.path.commonprefix([dir, file_dir]) == dir:
+                return False
+    except:
+        pass
+
     found = _import_module(obj.__module__ + '.' + obj.__name__, safe=True)
     return found is obj
 
@@ -697,7 +728,7 @@ def save_code(pickler, obj):
 
 @register(FunctionType)
 def save_function(pickler, obj):
-    if not _locate_function(obj, main_modname=pickler._main.__name__): #, pickler._session):
+    if not _locate_function(obj, ship_paths=pickler._ship_paths): #, pickler._session):
         log.info("F1: %s" % obj)
         if getattr(pickler, '_recurse', False):
             # recurse to get all globals referred to by obj
@@ -707,6 +738,15 @@ def save_function(pickler, obj):
                 globs = obj.__globals__ if PY3 else obj.func_globals
         else:
             globs = obj.__globals__ if PY3 else obj.func_globals
+
+        items = 'items' if PY3 else 'iteritems'
+        memo_globs = {}
+        for k, v in getattr(globs, items)():
+            if obj is v:
+                memo_globs[k] = v
+        for k, v in getattr(memo_globs, items)():
+            globs.pop(k, None)
+
         if PY3:
             pickler.save_reduce(_create_function, (obj.__code__,
                                 globs, obj.__name__,
@@ -717,6 +757,10 @@ def save_function(pickler, obj):
                                 globs, obj.func_name,
                                 obj.func_defaults, obj.func_closure,
                                 obj.__dict__), obj=obj)
+
+        for k, v in getattr(memo_globs, items)():
+            globs[k] = memo_globs[k]
+
     else:
         log.info("F2: %s" % obj)
         StockPickler.save_global(pickler, obj) #NOTE: also takes name=...
@@ -724,7 +768,8 @@ def save_function(pickler, obj):
 
 @register(dict)
 def save_module_dict(pickler, obj):
-    if is_dill(pickler) and obj == pickler._main.__dict__ and not pickler._session:
+    if is_dill(pickler) and obj == pickler._main.__dict__ and not pickler._session \
+            and not pickler.is_ship_module(obj):
         log.info("D1: <dict%s" % str(obj.__repr__).split('dict')[-1]) # obj
         if PY3:
             pickler.write(bytes('c__builtin__\n__main__\n', 'UTF-8'))
@@ -737,17 +782,35 @@ def save_module_dict(pickler, obj):
         else:
             pickler.write('c__main__\n__dict__\n')   #XXX: works in general?
     elif '__name__' in obj and obj != _main_module.__dict__ \
-    and obj is getattr(_import_module(obj['__name__'],True), '__dict__', None):
+            and obj is getattr(_import_module(obj['__name__'], True), '__dict__', None) \
+            and not pickler.is_ship_module(obj):
         log.info("D4: <dict%s" % str(obj.__repr__).split('dict')[-1]) # obj
         if PY3:
             pickler.write(bytes('c%s\n__dict__\n' % obj['__name__'], 'UTF-8'))
         else:
             pickler.write('c%s\n__dict__\n' % obj['__name__'])
-    else:
+    elif '__name__' in obj and obj != _main_module.__dict__ \
+            and obj is getattr(_import_module(obj['__name__'], True), '__dict__', None) \
+            and not pickler.is_module_pickled(obj['__file__']):
+        log.info("D2: <dict%s" % str(obj.__repr__).split('dict')[-1]) # obj
+        items = 'items' if PY3 else 'iteritems'
+        striped_keys = singletontypes + ["__builtins__", "__loader__"]
+        striped_items = {}
+        for k, v in getattr(obj, items)():
+            if k in striped_keys or pickler.memo.get(id(v)):
+                striped_items[k] = obj[k]
+        for k, v in getattr(striped_items, items)():
+            obj.pop(k, None)
+        pickler.add_pickled_module(obj['__file__'])
+        StockPickler.save_dict(pickler, obj)
+
+        for k, v in getattr(striped_items, items)():
+            obj[k] = striped_items[k]
+    elif '__file__' not in obj or not pickler.is_module_pickled(obj['__file__']):
         log.info("D2: <dict%s" % str(obj.__repr__).split('dict')[-1]) # obj
         if is_dill(pickler) and pickler._session:
             # we only care about session the first pass thru
-            pickler._session = False 
+            pickler._session = False
         StockPickler.save_dict(pickler, obj)
     return
 
@@ -930,7 +993,7 @@ if HAS_CTYPES and IS_PYPY:
         log.info("Ce: %s" % obj)
         pickler.save_reduce(_create_cell, (obj.cell_contents,), obj=obj)
         return
- 
+
 # The following function is based on 'saveDictProxy' from spickle
 # Copyright (c) 2011 by science+computing ag
 # License: http://www.apache.org/licenses/LICENSE-2.0
@@ -1025,6 +1088,7 @@ def save_weakproxy(pickler, obj):
 
 @register(ModuleType)
 def save_module(pickler, obj):
+    # noinspection PyUnboundLocalVariable
     if False: #_use_diff:
         if obj.__name__ != "dill":
             try:

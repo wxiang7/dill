@@ -740,27 +740,20 @@ def save_function(pickler, obj):
         else:
             globs = obj.__globals__ if PY3 else obj.func_globals
 
-        items = 'items' if PY3 else 'iteritems'
-        memo_globs = {}
-        for k, v in getattr(globs, items)():
-            if obj is v:
-                memo_globs[k] = v
-        for k, v in getattr(memo_globs, items)():
-            globs.pop(k, None)
-
-        if PY3:
-            pickler.save_reduce(_create_function, (obj.__code__,
-                                globs, obj.__name__,
-                                obj.__defaults__, obj.__closure__,
-                                obj.__dict__), obj=obj)
-        else:
-            pickler.save_reduce(_create_function, (obj.func_code,
-                                globs, obj.func_name,
-                                obj.func_defaults, obj.func_closure,
-                                obj.__dict__), obj=obj)
-
-        for k, v in getattr(memo_globs, items)():
-            globs[k] = memo_globs[k]
+        try:
+            if PY3:
+                pickler.save_reduce(_create_function, (obj.__code__,
+                                    globs, obj.__name__,
+                                    obj.__defaults__, obj.__closure__,
+                                    obj.__dict__), obj=obj)
+            else:
+                pickler.save_reduce(_create_function, (obj.func_code,
+                                    globs, obj.func_name,
+                                    obj.func_defaults, obj.func_closure,
+                                    obj.__dict__), obj=obj)
+        except AssertionError:
+            # skip memo assertion error
+            pass
 
     else:
         log.info("F2: %s" % obj)
@@ -1111,7 +1104,7 @@ def save_module(pickler, obj):
         if hasattr(obj, "__file__"):
             names = ["base_prefix", "base_exec_prefix", "exec_prefix",
                      "prefix", "real_prefix"]
-            builtin_mod = any([obj.__file__.startswith(getattr(sys, name))
+            builtin_mod = any([obj.__file__.startswith(os.path.abspath(getattr(sys, name)))
                            for name in names if hasattr(sys, name)])
             builtin_mod = builtin_mod or 'site-packages' in obj.__file__
         else:

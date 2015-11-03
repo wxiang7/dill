@@ -81,6 +81,8 @@ def extend(use_dill=True):
     from .dill import _extend
     _extend()
 
+extend()
+
 def license():
     """print license"""
     print (__license__)

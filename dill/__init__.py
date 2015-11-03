@@ -96,4 +96,36 @@ def citation():
 del absolute_import
 del odict
 
+class Export:
+
+    def __init__(self, ship_path=[]):
+        self.ship_path = ship_path
+
+        self.loads = loads
+        self.load = load
+
+        def dump_proxy(*args, **kwargs):
+            kwarguments = Export.ingest_ship_path(ship_path, kwargs)
+            return dump(*args, **kwarguments)
+
+        def dumps_proxy(*args, **kwargs):
+            kwarguments = Export.ingest_ship_path(ship_path, kwargs)
+            return dumps(*args, **kwarguments)
+
+        self.dump = dump_proxy
+        self.dumps = dumps_proxy
+
+    @staticmethod
+    def ingest_ship_path(ship_path, kwargs):
+        if 'ship_path' not in kwargs:
+            kwarguments = kwargs.copy()
+            kwarguments['ship_path'] = ship_path
+        else:
+            kwarguments = kwargs
+        return kwarguments
+
+
+def get_dill(ship_path=[]):
+    return Export(ship_path)
+
 # end of file

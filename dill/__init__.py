@@ -23,10 +23,9 @@ __doc__ = """
 __license__ = """
 """ + __license__
 
-from .dill import dump, dumps, load, loads, dump_session, load_session, \
+from .dill import dump, dumps, load, loads, \
     Pickler, Unpickler, register, copy, pickle, pickles, check, \
-    HIGHEST_PROTOCOL, DEFAULT_PROTOCOL, PicklingError, UnpicklingError, \
-    HANDLE_FMODE, CONTENTS_FMODE, FILE_FMODE
+    HIGHEST_PROTOCOL, DEFAULT_PROTOCOL, PicklingError, UnpicklingError
 from . import source, temp, detect
 
 # get global settings
@@ -79,12 +78,8 @@ def load_types(pickleable=True, unpickleable=True):
 
 def extend(use_dill=True):
     '''add (or remove) dill types to/from pickle'''
-    from .dill import _revert_extension, _extend
-    if use_dill: _extend()
-    else: _revert_extension()
-    return
-
-extend()
+    from .dill import _extend
+    _extend()
 
 def license():
     """print license"""

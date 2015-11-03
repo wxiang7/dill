@@ -16,6 +16,7 @@ from .pointers import parent, reference, at, parents, children
 from .dill import _trace as trace
 from .dill import PY3
 
+
 def getmodule(object, _filename=None, force=False):
     """get the module of the object"""
     from inspect import getmodule as getmod
@@ -27,6 +28,7 @@ def getmodule(object, _filename=None, force=False):
     from .source import getname
     name = getname(object, force=True)
     return builtins if name in vars(builtins).keys() else None
+
 
 def outermost(func): # is analogous to getsource(func,enclosing=True)
     """get outermost enclosing object (i.e. the outer function in a closure)
@@ -65,6 +67,7 @@ def outermost(func): # is analogous to getsource(func,enclosing=True)
             pass
     return #XXX: or raise? no matches
 
+
 def nestedcode(func, recurse=True): #XXX: or return dict of {co_name: co} ?
     """get the code objects for any nested functions (e.g. in a closure)"""
     func = code(func)
@@ -77,6 +80,7 @@ def nestedcode(func, recurse=True): #XXX: or return dict of {co_name: co} ?
             nested.add(co)
             if recurse: nested |= set(nestedcode(co, recurse=True))
     return list(nested)
+
 
 def code(func):
     '''get the code object for the given function or method
@@ -96,7 +100,8 @@ def code(func):
     if iscode(func): return func
     return
 
-#XXX: ugly: parse dis.dis for name after "<code object" in line and in globals?
+
+# ugly: parse dis.dis for name after "<code object" in line and in globals?
 def referrednested(func, recurse=True): #XXX: return dict of {__name__: obj} ?
     """get functions defined inside of func (e.g. inner functions in a closure)
 
@@ -155,6 +160,7 @@ def freevars(func):
         return {}
     return dict((name,c.cell_contents) for (name,c) in zip(func,closures))
 
+
 # thanks to Davies Liu for recursion of globals
 def nestedglobals(func, recurse=True):
     """get the names of any globals found within func"""
@@ -173,9 +179,11 @@ def nestedglobals(func, recurse=True):
             names.update(nestedglobals(co, recurse=True))
     return list(names)
 
+
 def referredglobals(func, recurse=True, builtin=False):
     """get the names of objects in the global scope referred to by func"""
     return globalvars(func, recurse, builtin).keys()
+
 
 def globalvars(func, recurse=True, builtin=False):
     """get objects defined in global scope that are referred to by func
@@ -191,7 +199,8 @@ def globalvars(func, recurse=True, builtin=False):
         func_code = 'func_code'
         func_globals = 'func_globals'
         func_closure = 'func_closure'
-    if ismethod(func): func = getattr(func, im_func)
+    if ismethod(func):
+        func = getattr(func, im_func)
     if isfunction(func):
         globs = vars(getmodule(sum)) if builtin else {}
         # get references from within closure
@@ -264,6 +273,7 @@ def badobjects(obj, depth=0, exact=False, safe=False):
     return dict(((attr, badobjects(getattr(obj,attr),depth-1,exact,safe)) \
            for attr in dir(obj) if not pickles(getattr(obj,attr),exact,safe)))
 
+
 def badtypes(obj, depth=0, exact=False, safe=False):
     """get types for objects that fail to pickle"""
     from dill import pickles
@@ -272,6 +282,7 @@ def badtypes(obj, depth=0, exact=False, safe=False):
         return type(obj)
     return dict(((attr, badtypes(getattr(obj,attr),depth-1,exact,safe)) \
            for attr in dir(obj) if not pickles(getattr(obj,attr),exact,safe)))
+
 
 def errors(obj, depth=0, exact=False, safe=False):
     """get errors for objects that fail to pickle"""

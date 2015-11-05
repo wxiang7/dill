@@ -233,7 +233,12 @@ def dumps(obj, protocol=None, byref=None, fmode=None, recurse=None, **kwargs):
     """pickle an object to a string"""
     file_out = StringIO()
     dump(obj, file_out, protocol, byref, fmode, recurse, **kwargs)
-    return file_out.getvalue()
+    pickled = file_out.getvalue()
+
+    if 'compress' in kwargs and kwargs['compress']:
+        from zlib import compress
+        pickled = compress(pickled)
+    return pickled
 
 
 def load(file_in, **kwargs):
@@ -253,6 +258,9 @@ def load(file_in, **kwargs):
 
 def loads(str_pickled, **kwargs):
     """unpickle an object from a string"""
+    if 'compress' in kwargs and kwargs['compress']:
+        from zlib import decompress
+        str_pickled = decompress(str_pickled)
     file_in = StringIO(str_pickled)
     return load(file_in, **kwargs)
 
@@ -339,7 +347,8 @@ class ProxyModule(dict):
         return invoke
 
 
-FUNC_GLOBAL_ITEM = '+'
+FUNC_GLOBAL = '+'
+from pickle import SETITEM, SETITEMS
 
 
 # Extend the Pickler
@@ -447,13 +456,8 @@ class Pickler(StockPickler):
 
     def _batch_func_globals(self, func_globals):
         # Helper to batch up FUNC_GLOBAL_ITEM sequences; proto >= 1 only
-        save = self.save
-        write = self.write
-
-        for k, v in iteritems(func_globals):
-            save(k)
-            save(v)
-            write(FUNC_GLOBAL_ITEM)
+        self.save(func_globals)
+        self.write(FUNC_GLOBAL)
 
     def write_lines(self, lines):
         if PY3:
@@ -484,16 +488,48 @@ class Unpickler(StockUnpickler):
 
     def load_func_global_item(self):
         stack = self.stack
+        globs = stack.pop()
+        func = stack[-1]
+        if globs:
+            for k, v in iteritems(globs):
+                func.func_globals[k] = v
+        self._func_globals[id(globs)].append(func)
+    StockUnpickler.dispatch[FUNC_GLOBAL] = load_func_global_item
+
+    def load_setitem(self):
+        stack = self.stack
         value = stack.pop()
         key = stack.pop()
-        func = stack[-1]
-        func.func_globals[key] = value
+        dict = stack[-1]
+        dict[key] = value
 
-    StockUnpickler.dispatch[FUNC_GLOBAL_ITEM] = load_func_global_item
+        if is_dill(self) and id(dict) in self._func_globals:
+            funcs = self._func_globals[id(dict)]
+            for func in funcs:
+                func.func_globals[key] = value
+    StockUnpickler.dispatch[SETITEM] = load_setitem
+
+    def load_setitems(self):
+        stack = self.stack
+        mark = self.marker()
+        dict = stack[mark - 1]
+        for i in range(mark + 1, len(stack), 2):
+            dict[stack[i]] = stack[i + 1]
+
+        if is_dill(self) and id(dict) in self._func_globals:
+            funcs = self._func_globals[id(dict)]
+            for i in range(mark + 1, len(stack), 2):
+                for func in funcs:
+                    func.func_globals[stack[i]] = stack[i + 1]
+
+        del stack[mark:]
+    StockUnpickler.dispatch[SETITEMS] = load_setitems
 
     def __init__(self, *args, **kwds):
         StockUnpickler.__init__(self, *args, **kwds)
+        from collections import defaultdict
         self._main = _main_module
+        self._func_globals = defaultdict(list)
 
 pickle_dispatch_copy = StockPickler.dispatch.copy()
 

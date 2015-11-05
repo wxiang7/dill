@@ -98,28 +98,43 @@ del odict
 
 class Export:
 
-    def __init__(self, ship_path=[]):
+    def __init__(self, ship_path=[], compress=True):
         self.ship_path = ship_path
-
-        self.loads = loads
-        self.load = load
-
+        self.compress = compress
+        
         def dump_proxy(*args, **kwargs):
             kwarguments = Export.ingest_ship_path(ship_path, kwargs)
             return dump(*args, **kwarguments)
 
         def dumps_proxy(*args, **kwargs):
             kwarguments = Export.ingest_ship_path(ship_path, kwargs)
+            kwarguments = Export.ingest_compress(compress, kwarguments)
             return dumps(*args, **kwarguments)
+
+        def loads_proxy(*args, **kwargs):
+            kwarguments = Export.ingest_compress(compress, kwargs)
+            return loads(*args, **kwarguments)
 
         self.dump = dump_proxy
         self.dumps = dumps_proxy
+
+        self.loads = loads_proxy
+        self.load = load
 
     @staticmethod
     def ingest_ship_path(ship_path, kwargs):
         if 'ship_path' not in kwargs:
             kwarguments = kwargs.copy()
             kwarguments['ship_path'] = ship_path
+        else:
+            kwarguments = kwargs
+        return kwarguments
+
+    @staticmethod
+    def ingest_compress(compress, kwargs):
+        if 'compress' not in kwargs:
+            kwarguments = kwargs.copy()
+            kwarguments['compress'] = compress
         else:
             kwarguments = kwargs
         return kwarguments

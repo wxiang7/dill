@@ -348,6 +348,7 @@ class ProxyModule(dict):
 
 
 FUNC_GLOBAL = '+'
+CLASS_DICT = '='
 from pickle import SETITEM, SETITEMS
 
 
@@ -374,7 +375,7 @@ class Pickler(StockPickler):
         self._recurse = _recurse
 
     def save_reduce(self, func, args, state=None,
-                    listitems=None, dictitems=None, obj=None, func_globals=None):
+                    listitems=None, dictitems=None, obj=None, func_globals=None, class_dict=None):
         from pickle import TupleType, NEWOBJ, REDUCE, BUILD
         # This API is called by some subclasses
 
@@ -450,9 +451,16 @@ class Pickler(StockPickler):
         if dictitems is not None:
             self._batch_setitems(dictitems)
 
+        if class_dict is not None:
+            self._batch_class_dict(class_dict)
+
         if state is not None:
             save(state)
             write(BUILD)
+
+    def _batch_class_dict(self, class_dict):
+        self.save(class_dict)
+        self.write(CLASS_DICT)
 
     def _batch_func_globals(self, func_globals):
         # Helper to batch up FUNC_GLOBAL_ITEM sequences; proto >= 1 only
@@ -495,6 +503,14 @@ class Unpickler(StockUnpickler):
                 func.func_globals[k] = v
         self._func_globals[id(globs)].append(func)
     StockUnpickler.dispatch[FUNC_GLOBAL] = load_func_global_item
+
+    def load_class_dict(self):
+        stack = self.stack
+        class_dict = stack.pop()
+        class_obj = stack[-1]
+        for k, v in iteritems(class_dict):
+            class_obj.__dict__[k] = v
+    StockUnpickler.dispatch[CLASS_DICT] = load_class_dict
 
     def load_setitem(self):
         stack = self.stack
@@ -826,6 +842,16 @@ def save_classobj(pickler, obj):
         pickler.save_reduce(ClassType, (obj.__name__, obj.__bases__,
                                         obj.__dict__), obj=obj)
         log.info("# C1")
+    elif obj.__module__ in sys.modules and _from_ship_path(sys.modules[obj.__module__].__file__, pickler.ship_path):
+        log.info("C3: %s" % obj)
+        class_dict = obj.__dict__
+        class_funcs = dict([(k, v) for k, v in iteritems(class_dict) \
+                            if isinstance(v, FunctionType) or isinstance(v, classmethod) or isinstance(v, staticmethod)])
+        class_non_funcs = dict([(k, v) for k, v in iteritems(class_dict) \
+                                if not (isinstance(v, FunctionType) or isinstance(v, classmethod) or isinstance(v, staticmethod))])
+        pickler.save_reduce(ClassType, (obj.__name__, obj.__bases__,
+                                        class_non_funcs), obj=obj, class_dict=class_funcs)
+        log.info("# C3")
     else:
         log.info("C2: %s" % obj)
         StockPickler.save_global(pickler, obj)

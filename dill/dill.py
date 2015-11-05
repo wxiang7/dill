@@ -606,25 +606,9 @@ def _create_function(fcode, fglobals, fname=None, fdefaults=None, fclosure=None,
     log.info('loading function: ' + fname)
     fdict = fdict or dict()
     fglobals = fglobals or {}
-    if len(fglobals) == 0:
-        fglobals = ProxyModule(mod_name)
     func = FunctionType(fcode, fglobals, fname, fdefaults, fclosure)
     func.__dict__.update(fdict)
     func.__module__ = mod_name
-    if mod_name is not None:
-        # overwriting global scope of function
-        mod = _import_module(mod_name)
-        if not isinstance(fglobals, ProxyModule) and len(fglobals) > len(mod.__dict__):
-            for k in fglobals.keys():
-                setattr(mod, k, fglobals[k])
-
-            for k, v in iteritems(mod.__dict__):
-                if isinstance(v, FunctionType) and isinstance(get_function_globals(v), ProxyModule) \
-                        and v.__module__ == mod_name:
-                    v.func_globals.update(fglobals)
-
-        setattr(mod, fname, func)
-
     return func
 
 

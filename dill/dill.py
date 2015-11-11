@@ -659,6 +659,20 @@ class _attrgetter_helper(object):
         return type(self)(attrs, index)
 
 
+if HAS_CTYPES and IS_PYPY:
+    try:
+        # if using `pypi`, pythonapi is not found
+        ctypes.pythonapi.PyCell_New.restype = ctypes.py_object
+        ctypes.pythonapi.PyCell_New.argtypes = [ctypes.py_object]
+        # thanks to Paul Kienzle for cleaning the ctypes CellType logic
+
+        def _create_cell(contents):
+            return ctypes.pythonapi.PyCell_New(contents)
+
+    except AttributeError:
+        IS_PYPY = False
+
+
 def _create_weakref(obj, *args):
     from weakref import ref
     if obj is None:  # it's dead
@@ -959,6 +973,15 @@ else:
         pickler.save_reduce(_getattr, (obj.__objclass__, obj.__name__,
                                        obj.__repr__()), obj=obj)
         log.info("# Wr")
+        return
+
+
+if HAS_CTYPES and IS_PYPY:
+    @register(CellType)
+    def save_cell(pickler, obj):
+        log.info("Ce: %s" % obj)
+        pickler.save_reduce(_create_cell, (obj.cell_contents,), obj=obj)
+        log.info("# Ce")
         return
 
 
